@@ -1,1 +1,1047 @@
-sadf
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <Servo.h>
+#include <EEPROM.h>
+RF24 radio(7, 8); // nRF24L01 (CE, CSN)
+const byte address[6] = "00001";
+unsigned long lastReceiveTime = 0;
+unsigned long currentTime = 0;
+// Max size of this struct is 32 bytes - NRF24L01 buffer limit
+
+int i = 10;
+struct Data_Package {
+  byte j1PotX;
+  byte j1PotY;
+  byte j1Button;
+  byte j2PotX;
+  byte j2PotY;
+  byte j2Button;
+  byte pot1;
+  byte pot2;
+  byte tSwitch1;
+  byte tSwitch2;
+  byte button1;
+  byte button2;
+  byte button3;
+  byte button4;
+
+};
+Data_Package data;
+
+float el, alp1, l11, gam, a21, a22, alp2, finalAlpha, beta11, beta22, beta3;
+
+float newA1 ;
+float newA2 ;
+float newA3 ;
+float newA4 ;
+
+
+float newB1 ;
+float newB2 ;
+float newB3 ;
+float newB4 ;
+
+double phi, n, m, wx, wy, delta, c22, s22, s1, c1;
+
+/*
+  const float cx = 68; //coxa
+  const float fm = 50; //femur
+  const float tb = 90; // tibia
+
+*/
+const float cx = 38; //coxa
+const float fm = 47; //femur
+const float tb = 83; // tibia
+float L, L1;
+float alpha, alpha1, alpha0, alpha2, alpha3, beta, beta1, beta2, gamma;
+float alphaz, alpha11,  alpha22, betaz, gamaz;
+double FF;
+
+float newB;
+
+
+int state, targetValue, currentValue, stepDiff, targetPrev, rate;
+double previousMillis = 0;
+double currentMillis;
+
+float  c3, s3, q3, q2, q1;
+
+
+
+float l1 = 38;
+float l2 = 47; //femur
+float l3 = 83;
+
+const float length_a = 38;
+const float length_b = 47;
+const float length_c = 95;
+
+//const float length_c = 90;
+float h = 20.0;
+
+// called this way, it uses the default address 0x40
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+
+#define SERVOMIN  70 // This is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  650 // This is the 'maximum' pulse length count (out of 4096)
+#define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
+#define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
+#define SERVO_FREQ 70 // Analog servos run at ~50 Hz updates
+int d = 2;
+
+int count = 0;
+
+int leg1 = 0;
+int leg2 = 4;
+int leg3 = 8;
+int leg4 = 12;
+int extraPin1 = 3;
+
+int extraPin2 = 7;
+
+int extraPin3 = 11;
+
+int extraPin4 = 16;
+/********************** LEG ONE **************************/
+unsigned int s1_1 = 0;
+unsigned int s1_2 = 1;
+unsigned int s1_3 = 2;
+
+
+float s1_1min = 70;
+float s1_1max = 580;
+float s1_1middle = abs((s1_1max - s1_1min) / 2.0)  ;
+float middleRange1_1 = ( s1_1middle ) / 90;
+
+
+
+float s1_2min = 75;
+float s1_2max = 400;
+float s1_2middle = abs((s1_2max - s1_2min) / 1.0)  ;
+float middleRange1_2 = ( s1_2middle ) / 180.0;
+
+
+float s1_3min = 380;
+float s1_3max = 680;
+float s1_3middle = abs((s1_3max - s1_3min) / 2.0)  ;
+float middleRange1_3 = ( s1_3middle ) / 90;
+
+/********************** LEG TWO **************************/
+
+float s2_1 = 4;
+float s2_2 = 5;
+float s2_3 = 6;
+
+
+float s2_1min = s1_1min;
+float s2_1max = s1_1max;
+float s2_1middle = abs((s2_1max - s2_1min) / 2.0)  ;
+float middleRange2_1 = ( s2_1middle ) / 90;
+
+
+
+float s2_2min = s1_2min;
+float s2_2max = s1_2max;
+float s2_2middle = abs((s2_2max - s2_2min) / 1.0)  ;
+float middleRange2_2 = ( s2_2middle ) / 180;
+
+
+float s2_3min = s1_3min;
+float s2_3max = s1_3max;
+float s2_3middle = abs((s2_3max - s2_3min) / 2.0)  ;
+float middleRange2_3 = ( s2_3middle ) / 90;
+/********************** LEG THREE **************************/
+
+
+float s3_1 = 8;
+float s3_2 = 9;
+float s3_3 = 10;
+
+
+float s3_1min = s1_1min;
+float s3_1max = s1_1max;
+float s3_1middle = abs((s3_1max - s3_1min) / 2.0)  ;
+float middleRange3_1 = ( s3_1middle ) / 90;
+
+
+float s3_2min = s1_2min;
+float s3_2max = s1_2max;
+float s3_2middle = abs((s3_2max - s3_2min) / 1.0)  ;
+float middleRange3_2 = ( s3_2middle ) / 180;
+
+
+unsigned int s3_3min = s1_3min;
+unsigned int s3_3max = s1_3max;
+float s3_3middle = abs((s3_3max - s3_3min) / 2.0)  ;
+float middleRange3_3 = ( s3_3middle ) / 90;
+
+
+
+
+
+//********************** LEG FOUR **************************/
+
+
+unsigned int s4_1 = 12;
+unsigned int s4_2 = 13;
+unsigned int s4_3 = 14;
+int pulselen;
+
+
+
+unsigned int s4_1min = s1_1min;
+unsigned int s4_1max = s1_1max;
+//unsigned int s4_1max = 650;
+float s4_1middle = abs((s4_1max - s4_1min) / 2.0)  ;
+float middleRange4_1 = ( s4_1middle - s4_1min) / 90;
+
+
+unsigned int s4_2min = s1_2min;
+unsigned int s4_2max = s1_2max;
+float s4_2middle = abs((s4_2max - s4_2min) / 1.0)  ;
+float middleRange4_2 = ( s4_2middle ) / 180;
+
+
+unsigned int s4_3min = s1_3min;
+unsigned int s4_3max = s1_3max;
+float s4_3middle = abs((s4_3max - s4_3min) / 2.0)  ;
+float middleRange4_3 = ( s4_3middle ) / 90;
+
+int servoMin[] = {s1_1min, s1_2min, s1_3min, extraPin1, s2_1min, s2_2min, s2_3min, extraPin2,  s3_1min, s3_2min, s3_3min, extraPin3, s4_1min, s4_2min, s4_3min, extraPin4 };
+int servoMax[] = {s1_1max, s1_2max, s1_3max, extraPin1, s2_1max, s2_2max, s2_3max, extraPin2,  s3_1max, s3_2max, s3_3max, extraPin3, s4_1max, s4_2max, s4_3max, extraPin4 };
+
+int servoNos[] = {s1_1, s1_2, s1_3, extraPin1, s2_1, s2_2, s2_3, extraPin2, s3_1, s3_2, s3_3, extraPin3, s4_1, s4_2, s4_3, extraPin4};
+float middleRanges[] = {middleRange1_1, middleRange1_2, middleRange1_3, extraPin1, middleRange2_1, middleRange2_2, middleRange2_3, extraPin2, middleRange3_1, middleRange3_2, middleRange3_3, extraPin3, middleRange4_1, middleRange4_2, middleRange4_3, extraPin4};
+float sMiddles[] = {s1_1middle, s1_2middle, s1_3middle, extraPin1, s2_1middle, s2_2middle, s2_3middle, extraPin2, s3_1middle, s3_2middle, s3_3middle, extraPin3, s4_1middle, s4_2middle, s4_3middle, extraPin4};
+
+/***************************************************************************************
+    X Y Z CO-ORDDNIATES
+***************************************************************************************/
+
+
+/***************************************************************************************
+***************************************************************************************/
+
+
+
+
+
+
+float a2;
+float bf2 ;
+float bc2;
+float b2 ;
+float c2;
+
+
+
+void setup() {
+  Serial.begin(9600);
+
+  pwm.begin();
+  pwm.setOscillatorFrequency(27000000);
+  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
+
+
+  radio.begin();
+  radio.openReadingPipe(0, address);
+  radio.setAutoAck(false);
+  radio.setDataRate(RF24_250KBPS);
+  radio.setPALevel(RF24_PA_LOW);
+  radio.startListening(); //  Set the module as receiver
+  //resetData();
+
+  /*  pwm.setPWM(s1_1, 0, s1_1min );
+    pwm.setPWM(s1_2, 0, s1_2min);
+    pwm.setPWM(s1_3, 0, s1_3min );
+
+    //delay(500);
+    pwm.setPWM(s3_1, 0, s3_1min);
+    pwm.setPWM(s3_2, 0, s3_2min );
+    pwm.setPWM(s3_3, 0, s3_3min);
+
+  */
+}
+
+
+
+void loop()
+{
+
+
+
+
+
+  currentMillis = millis();
+
+  if (currentMillis - previousMillis >= 1)
+  {
+    previousMillis = currentMillis;
+
+    // rate = analogRead(A4);
+
+    //  rate = map(rate, 0, 1023, 5, 100);
+
+    //  rate = 25;
+
+    //  Serial.print(" POT: ");
+    //  Serial.print(pot);
+    //  Serial.print(" mapped pot: ");
+    // Serial.print("rate ");
+    // Serial.println(rate);
+    //  Serial.println();
+
+    if (state == 0)
+    {
+      targetValue = 5;
+      if (currentValue <= targetValue)
+      {
+        state = 1;
+        targetPrev = targetValue;
+      }
+
+    }
+
+    else if (state == 1)
+    {
+      targetValue = 150;
+      if (currentValue >= targetValue)
+      {
+        state = 0;
+        targetPrev = targetValue;
+      }
+
+    }
+
+
+
+  }
+
+  stepDiff = (targetValue - targetPrev) / (1 * 35);
+
+  currentValue = currentValue + stepDiff;
+
+
+  int del = 250;
+
+  delay(del);
+
+  /*
+
+    moveLeg(leg1, 10, 10, 0);
+    moveLeg(leg2, 10, 10, 0);
+
+    moveLeg(leg3, 10, 10, 0);
+
+    moveLeg(leg3, 10, 10, 0);
+
+  */
+
+  testServos(s2_1, s2_2, s2_3, 70, 550);
+  if (a2 > s1_1max) a2 = s1_1max;
+  if (b2 > s1_2max) b2 = s1_2max;
+  if (c2 > s1_3max) c2 = s1_3max;
+
+  if (a2 < s1_1min) a2 = s1_1min;
+  if (b2 < s1_2min) b2 = s1_2min;
+  if (c2 < s1_3min) c2 = s1_3min;
+
+
+
+
+
+  //  pwm.setPWM(s1_2, 0, s1_2max);
+
+
+
+
+
+
+  // delay(2000);
+  // Check whether there is data to be received
+  if (radio.available()) {
+    radio.read(&data, sizeof(Data_Package)); // Read the whole data and store it into the 'data' structure
+    lastReceiveTime = millis(); // At this moment we have received the data
+  }
+  // Check whether we keep receving data, or we have a connection between the two modules
+  currentTime = millis();
+  if ( currentTime - lastReceiveTime > 1000 ) { // If current time is more then 1 second since we have recived the last data, that means we have lost connection
+    resetData(); // If connection is lost, reset the data. It prevents unwanted behavior, for example if a drone has a throttle up and we lose connection, it can keep flying unless we reset the values
+  }
+  // Print the data in the Serial Monitor
+  /* Serial.print("j1PotX: ");
+    Serial.print(data.j1PotX);
+    Serial.print("; j1PotY: ");
+    Serial.print(data.j1PotY);
+    Serial.print(" pot 1 ");
+    Serial.print(data.pot2);
+    // Serial.print("pot 2 ");
+    // Serial.print(data.pot2);
+
+
+    Serial.print("; j2PotY: ");
+    Serial.print(data.j2PotY);
+
+    Serial.print("; j2PotX: ");
+    Serial.println(data.j2PotX);
+    Serial.println();
+    Serial.println();
+    delay(500);*/
+
+
+
+
+
+  // delay(200);
+
+
+
+
+
+}
+
+
+void trigono_xyz2(float x, float y, float z)
+{
+  L1 = sqrt(sq(x) + sq(y));
+  q1 = atan(x / y) / PI * 180;
+  L = sqrt(sq(L1 - cx) + sq(z));
+  q3 = acos((sq(tb) + sq(fm) - sq(L)) / (2 * tb * fm)) / PI * 180;
+  alpha1 = acos(z / L) / PI * 180;
+  alpha2 = acos((sq(fm) + sq(L) - sq(tb)) / (2 * fm * L)) / PI * 180;
+  q2 = alpha1 + alpha2;
+}
+
+
+
+void cartesian_to_polar(volatile float & alpha, volatile float & beta, volatile float & gamma, volatile float x, volatile float y, volatile float z)
+{
+  //calculate w-z degree
+  float v, w;
+  w = (x >= 0 ? 1 : -1) * (sqrt(pow(x, 2) + pow(y, 2)));
+  v = w - length_c;
+  alpha = atan2(z, v) + acos((pow(length_a, 2) - pow(length_b, 2) + pow(v, 2) + pow(z, 2)) / 2 / length_a / sqrt(pow(v, 2) + pow(z, 2)));
+  beta = acos((pow(length_a, 2) + pow(length_b, 2) - pow(v, 2) - pow(z, 2)) / 2 / length_a / length_b);
+  //calculate x-y-z degree
+  gamma = (w >= 0) ? atan2(y, x) : atan2(-y, -x);
+  //trans degree pi->180
+  alpha = alpha / PI * 180;
+  beta = beta / PI * 180;
+  gamma = gamma / PI * 180;
+}
+
+
+void polar_to_servo(int leg, float alpha, float beta, float gamma)
+{
+  float alpha_error = EEPROM.read(leg * 6 + 0) - 100 + ((float)EEPROM.read(leg * 6 + 1) - 100) / 100;
+  float beta_error  = EEPROM.read(leg * 6 + 2) - 100 + ((float)EEPROM.read(leg * 6 + 3) - 100) / 100;
+  float gamma_error = EEPROM.read(leg * 6 + 4) - 100 + ((float)EEPROM.read(leg * 6 + 5) - 100) / 100;
+
+  alpha += alpha_error;
+  beta += beta_error;
+  gamma += gamma_error;
+
+  if (leg == 0)
+  {
+    alpha = 90 - alpha;
+    beta = beta;
+    gamma = 90 - gamma;
+  }
+  else if (leg == 1)
+  {
+    alpha += 90;
+    beta = 180 - beta;
+    gamma += 90;
+  }
+  else if (leg == 2)
+  {
+    alpha += 90;
+    beta = 180 - beta;
+    gamma += 90;
+  }
+  else if (leg == 3)
+  {
+    alpha = 90 - alpha;
+    beta = beta;
+    gamma = 90 - gamma;
+  }
+
+  //  servo[leg][0].write(alpha);
+  //servo[leg][1].write(beta);
+  //  servo[leg][2].write(gamma);
+}
+void mids(int s1, int s2, int s3, int s4, int pwns)
+{
+  pwm.setPWM(s1, 0, pwns);
+  pwm.setPWM(s2, 0, pwns);
+  pwm.setPWM(s3, 0, pwns);
+  pwm.setPWM(s4, 0, pwns);
+}
+
+
+
+
+
+void cls(int gammaL, int alphaL, int betaL, int pwmB , int pwmM, int pwmL)
+{
+  pwm.setPWM(gammaL, 0, pwmB);
+  pwm.setPWM(alphaL, 0, pwmM);
+  pwm.setPWM(betaL, 0, pwmL);
+}
+
+
+
+
+
+
+
+void leg(int gammaL, int alphaL, int betaL, int x , int y, int z)
+{
+
+
+
+
+  cartesian_to_polar(alpha, beta, gamma, x, y  , z);
+
+
+  gamma = gamma + 1;
+
+
+  a2 = (gamma   * middleRange1_1 ) + s1_1middle + s1_1min;
+
+
+  Serial.print("gamma= ");
+  Serial.print(gamma);
+  Serial.print(" a2= ");
+  Serial.println(a2);
+  Serial.println();
+  // delay(100);
+
+  if (a2 < s1_1min) a2 = s1_1min;
+  if (a2 > s1_1max) a2 = s1_1max;
+
+  pwm.setPWM(gammaL, 0, a2);
+
+
+
+
+  alpha = alpha + 1;
+
+  alpha = alpha - 180;
+
+  //if (alpha >= 180)  alpha = ( alpha - 180) ;
+
+
+
+
+
+  newA1 = (alpha ) ;
+
+  //alpha = abs(alpha - 180);
+  b2 = newA1 + s1_2min;
+
+  if (b2 > s1_2max) b2 = s1_2max;
+  if (b2 < s1_2min) b2 = s1_2min;
+
+  pwm.setPWM(alphaL, 0, b2);
+
+  Serial.print("alpha= ");
+  Serial.print(alpha );
+  Serial.print(" b2= ");
+  Serial.print(b2);
+
+
+
+  Serial.print("    newA1= ");
+  Serial.print(newA1 );
+
+  Serial.print("        middlerange1_2= ");
+  Serial.print(middleRange1_2 );
+  Serial.println();
+  Serial.println();
+
+
+
+
+
+
+
+
+
+
+  beta = abs(beta - 180);
+
+
+
+
+  newB = (beta ) * middleRange1_3;
+
+  c2 = newB + ( s1_3min );
+
+  if (c2 > s1_3max) c2 = s1_3max;
+  if (c2 < s1_3min) c2 = s1_3min;
+
+  pwm.setPWM(betaL, 0, c2);
+
+  Serial.print("beta= ");
+  Serial.print(beta );
+  Serial.print(" c2= ");
+  Serial.print(c2);
+
+
+
+  Serial.print("    newB11= ");
+  Serial.print(newB1 );
+
+
+  Serial.println();
+  Serial.println();
+  Serial.println();
+  Serial.println();
+  Serial.println();
+
+
+
+
+
+}
+
+
+
+
+
+
+void moveLeg(int legNo, int x , int y, int z)
+{
+
+
+
+
+
+  cartesian_to_polar(alpha, beta, gamma, x, y  , z);
+
+
+  gamma = gamma + 1;
+
+  Serial.println(gamma);
+  Serial.println(alpha);
+  Serial.println(beta);
+  Serial.println();
+
+
+
+  a2 = (gamma * middleRanges[legNo]) + sMiddles[legNo] + servoMin[legNo];
+
+
+  //  a2 = (gamma   * middleRange2_1 ) + s2_1middle + s2_1min;
+
+
+
+
+
+
+  if (a2 < servoMin[legNo]) a2 = servoMin[legNo];
+  if (a2 > servoMax[legNo]) a2 = servoMax[legNo];
+
+  pwm.setPWM(legNo, 0, a2);
+
+
+
+
+  alpha = alpha + 1;
+
+  alpha = alpha - 180;
+
+  //if (alpha >= 180)  alpha = ( alpha - 180) ;
+
+
+  newA1 = (alpha ) ;
+
+  //alpha = abs(alpha - 180);
+  b2 = newA1 + servoMin[legNo + 1];
+
+  if (b2 > servoMax[legNo + 1]) b2 = servoMax[legNo + 1];
+  if (b2 < servoMin[legNo + 1]) b2 = servoMin[legNo + 1];
+
+  pwm.setPWM(legNo + 1, 0, b2);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  beta = abs(beta - 180);
+
+
+
+  newB = (beta ) * middleRanges[legNo + 2];
+
+  c2 = newB + servoMin[legNo + 2] ;
+
+
+
+  if (c2 > servoMax[legNo + 2]) c2 = servoMax[legNo + 2];
+  if (c2 < servoMin[legNo + 2]) c2 = servoMin[legNo + 2];
+
+  pwm.setPWM(legNo + 2, 0, c2);
+
+
+
+
+
+
+
+
+
+
+}
+
+
+
+
+
+void testServos(int s1, int s2, int s3, int mins, int maxx)
+{
+  for ( pulselen = mins; pulselen < maxx; pulselen++)
+  {
+    pwm.setPWM(s1, 0, pulselen);
+    pwm.setPWM(s2, 0, pulselen);
+    pwm.setPWM(s3, 0, pulselen);
+   // pwm.setPWM(s4, 0, pulselen);
+  }
+
+
+
+  delay(1000);
+  for ( pulselen = maxx; pulselen > mins; pulselen--) {
+    pwm.setPWM(s1, 0, pulselen);
+    pwm.setPWM(s2, 0, pulselen);
+    pwm.setPWM(s3, 0, pulselen);
+   // pwm.setPWM(s4, 0, pulselen);
+  }
+
+  delay(1000);
+
+
+
+
+}
+
+
+
+
+void sequence()
+
+{
+  pwm.setPWM(s1_1, 0, 220);
+  pwm.setPWM(s2_1, 0, 250);
+  pwm.setPWM(s3_1, 0, 450);
+  pwm.setPWM(s4_1, 0, 330);
+
+  delay(500);
+
+  pwm.setPWM(s1_1, 0, 220);
+  pwm.setPWM(s2_1, 0, 450);
+  pwm.setPWM(s3_1, 0, 250);
+  pwm.setPWM(s4_1, 0, 330);
+
+
+}
+
+
+
+void moveForward()
+
+{
+  int x = 1200;
+
+
+}
+
+void upright(bool answer)
+{
+  //300
+
+  if (answer == true)
+  {
+    int pos = 150;
+    pwm.setPWM(s1_2, 0, pos + 40);
+    pwm.setPWM(s4_2, 0, pos - 30);
+
+    pwm.setPWM(s2_2, 0, pos - 20);
+
+    pwm.setPWM(s3_2, 0, pos + 50);
+  }
+
+
+  if (answer == false)
+  {
+    int pos = 280;
+    pwm.setPWM(s1_2, 0, pos + 40);
+    pwm.setPWM(s4_2, 0, pos - 30);
+
+    pwm.setPWM(s2_2, 0, pos - 20);
+
+    pwm.setPWM(s3_2, 0, pos + 50);
+  }
+
+}
+
+
+void frontUpright(bool answer)
+{
+  //150 for upright
+
+  if (answer == true)
+  {
+    int pos = 100;
+    pwm.setPWM(s1_2, 0, pos + 40);
+    pwm.setPWM(s4_2, 0, pos - 30);
+
+    //  pwm.setPWM(s2_2, 0, 280-20);
+
+    //  pwm.setPWM(s3_2, 0, 280+50);
+  }
+
+
+  if (answer == false)
+  {
+    int pos = 80;
+    pwm.setPWM(s1_2, 0, 280 + 40);
+    pwm.setPWM(s4_2, 0, 280 - 30);
+
+    // pwm.setPWM(s2_2, 0, 80);
+
+    //  pwm.setPWM(s3_2, 0, 90);
+  }
+
+}
+
+
+
+void backUpright(bool answer)
+{
+  //150 for upright
+
+  if (answer == true)
+  {
+    int pos = 100;
+    //  pwm.setPWM(s1_2, 0, pos+40);
+    //  pwm.setPWM(s4_2, 0, pos-30);
+
+    pwm.setPWM(s2_2, 0, 280 - 20);
+
+    pwm.setPWM(s3_2, 0, 280 + 50);
+  }
+
+
+  if (answer == false)
+  {
+    int pos = 80;
+    // pwm.setPWM(s1_2, 0, 280+40);
+    //  pwm.setPWM(s4_2, 0, 280-30);
+
+    pwm.setPWM(s2_2, 0, 80);
+
+    pwm.setPWM(s3_2, 0, 90);
+  }
+
+}
+
+
+void servoTest(int servonum)
+{
+  for (uint16_t pulselen = SERVOMIN; pulselen < SERVOMAX; pulselen++) {
+    pwm.setPWM(servonum, 0, pulselen);
+  }
+
+  delay(4000);
+  for (uint16_t pulselen = SERVOMAX; pulselen > SERVOMIN; pulselen--) {
+    pwm.setPWM(servonum, 0, pulselen);
+  }
+
+  delay(4000);
+
+}
+void backWings(bool answer)
+{
+
+  if (answer == true)
+  {
+
+    pwm.setPWM(s2_3, 0, 550 + 100);
+    pwm.setPWM(s3_3, 0, 550 + 100);
+
+    //  pwm.setPWM(s1_3, 0, 500+100);
+    //  pwm.setPWM(s4_3, 0, 500+50);
+  }
+
+
+  if (answer == false)
+  {
+
+    pwm.setPWM(s2_3, 0, 300);
+    pwm.setPWM(s3_3, 0, 350);
+
+  }
+}
+
+
+void frontWings(bool answer)
+{
+
+
+  if (answer == true)
+  {
+
+    pwm.setPWM(s1_3, 0, 500 + 100);
+    pwm.setPWM(s4_3, 0, 500 + 100);
+
+    //  pwm.setPWM(s1_3, 0, 500+100);
+    //  pwm.setPWM(s4_3, 0, 500+50);
+  }
+
+
+  if (answer == false)
+  {
+
+    pwm.setPWM(s1_3, 0, 350 + 100);
+    pwm.setPWM(s4_3, 0, 350 + 100);
+
+  }
+
+
+}
+
+void swingBase(  unsigned int pos)
+{
+  pwm.setPWM(s1_1, 0, pos);
+  pwm.setPWM(s2_1, 0, pos - 100);
+  pwm.setPWM(s3_1, 0, pos - 40);
+  pwm.setPWM(s4_1, 0, pos - 170);
+
+
+  delay(400);
+
+  pwm.setPWM(s1_1, 0, pos + 160);
+  pwm.setPWM(s2_1, 0, pos + 100);
+  pwm.setPWM(s3_1, 0, pos + 160);
+  pwm.setPWM(s4_1, 0, pos + 40);
+  delay(400);
+
+
+}
+
+void stableBase(  unsigned int pos)
+{
+  //200 all paralel
+  pwm.setPWM(s1_1, 0, pos + 150);
+  pwm.setPWM(s2_1, 0, pos + 150);
+  pwm.setPWM(s3_1, 0, pos + 175);
+  pwm.setPWM(s4_1, 0, pos + 50);
+
+
+
+}
+
+void moveLow()
+{
+  // sx_2 goes from upright (70) all the way down to 350
+  //sx_3 closes at 300 and opens at 550
+
+  int longdelay = 200;
+  delay(longdelay);
+  stableBase(300);
+
+  for (uint16_t pulselen = 200; pulselen < 350; pulselen++) {
+
+    pwm.setPWM(s1_3, 0, pulselen);
+
+
+
+    pwm.setPWM(s1_2, 0, pulselen);
+    pwm.setPWM(s2_2, 0, pulselen - 100);
+
+    pwm.setPWM(s3_2, 0, pulselen + 100);
+    pwm.setPWM(s4_2, 0, pulselen);
+
+
+
+
+
+
+    delay(d);
+  }
+
+
+
+
+  // delay(2000);
+  pwm.setPWM(s1_3, 0, 500);
+  pwm.setPWM(s2_3, 0, 500);
+
+  pwm.setPWM(s3_3, 0, 550);
+  pwm.setPWM(s4_3, 0, 500);
+
+
+
+
+  for (uint16_t pulselen = 350; pulselen > 200; pulselen--) {
+
+    pwm.setPWM(s1_3, 0, pulselen);
+
+
+
+    pwm.setPWM(s1_2, 0, pulselen);
+    pwm.setPWM(s2_2, 0, pulselen - 100);
+
+    pwm.setPWM(s3_2, 0, pulselen + 100);
+    pwm.setPWM(s4_2, 0, pulselen);
+
+
+
+
+    delay(d);
+  }
+
+
+  delay(longdelay);
+}
+
+
+
+
+//  delay(longdelay);
+
+
+
+void resetData()
+{
+  // Reset the values when there is no radio connection - Set initial default values
+  data.j1PotX = 127;
+  data.j1PotY = 127;
+  data.j2PotX = 127;
+  data.j2PotY = 127;
+  data.j1Button = 1;
+  data.j2Button = 1;
+  data.pot1 = 1;
+  data.pot2 = 1;
+  data.tSwitch1 = 1;
+  data.tSwitch2 = 1;
+  data.button1 = 1;
+  data.button2 = 1;
+  data.button3 = 1;
+  data.button4 = 1;
+}
